@@ -712,17 +712,6 @@ download_file() {
 main_download() {
     local file=$1
     case $file in
-    sysbench)
-        local url="${cdn_success_url}https://github.com/akopytov/sysbench/archive/1.0.20.zip"
-        local output="$TEMP_DIR/sysbench.zip"
-        download_file "$url" "$output" "$PROGRESS_DIR/$file" || return 1
-        chmod +x "$output"
-        is_safe_zip_archive "$output" && unzip "$output" -d "$TEMP_DIR" || return 1
-        if find "$TEMP_DIR/sysbench-1.0.20" -type l -print -quit 2>/dev/null | grep -q .; then
-            return 1
-        fi
-        echo "100" >"$PROGRESS_DIR/$file"
-        ;;
     UnlockTests)
         local url="${cdn_success_url}https://github.com/oneclickvirt/UnlockTests/releases/download/output/${UnlockTests_FILE}"
         local output="$TEMP_DIR/UnlockTests"
@@ -1461,137 +1450,6 @@ function BenchAPI_Systeminfo_GetOSReleaseinfo() {
 # ===========================================================================
 
 # =============== sysbench组件检测 部分 ===============
-get_sysbench_os_release() {
-    local OS_TYPE
-    case "${Var_OSRelease}" in
-    centos | rhel | almalinux | opencloudos) OS_TYPE="redhat" ;;
-    ubuntu) OS_TYPE="ubuntu" ;;
-    debian) OS_TYPE="debian" ;;
-    fedora) OS_TYPE="fedora" ;;
-    alpinelinux) OS_TYPE="alpinelinux" ;;
-    arch) OS_TYPE="arch" ;;
-    freebsd) OS_TYPE="freebsd" ;;
-    openbsd) OS_TYPE="openbsd" ;;
-    *) OS_TYPE="unknown" ;;
-    esac
-    echo "${OS_TYPE}"
-}
-
-InstallSysbench() {
-    local os_release=$1
-    case "$os_release" in
-    ubuntu)
-        apt-get -y install sysbench || {
-            apt-get --fix-broken install -y
-            apt-get --no-install-recommends -y install sysbench
-        }
-        ;;
-    debian)
-        apt-get -y install sysbench || {
-            apt-get --fix-broken install -y
-            apt-get --no-install-recommends -y install sysbench
-        }
-        ;;
-    redhat)
-        yum -y install epel-release && yum -y install sysbench || {
-            cleanup_epel
-            dnf install epel-release -y && dnf install sysbench -y || {
-                _red "Sysbench installation failed!"
-                return 1
-            }
-        }
-        ;;
-    fedora)
-        dnf -y install sysbench || {
-            _red "Sysbench installation failed!"
-            return 1
-        }
-        ;;
-    arch)
-        pacman -S --needed --noconfirm sysbench libaio && ldconfig || {
-            _red "Sysbench installation failed!"
-            return 1
-        }
-        ;;
-    freebsd)
-        pkg install -y sysbench || {
-            _red "Sysbench installation failed!"
-            return 1
-        }
-        ;;
-    openbsd)
-        pkg_add -I sysbench || {
-            _red "Sysbench installation failed!"
-            return 1
-        }
-        ;;
-    alpinelinux)
-        echo -e "${Msg_Warning}SysBench not supported on Alpine Linux, skipping..."
-        Var_Skip_SysBench="1"
-        ;;
-    *)
-        echo "Error: Unknown OS release: $os_release"
-        exit 1
-        ;;
-    esac
-}
-
-Check_SysBench() {
-    if [ ! -f "/usr/bin/sysbench" ] && [ ! -f "/usr/local/bin/sysbench" ]; then
-        local os_release=$(get_sysbench_os_release)
-        if [ "$os_release" = "alpinelinux" ]; then
-            Var_Skip_SysBench="1"
-        else
-            InstallSysbench "$os_release"
-        fi
-    fi
-    # 尝试编译安装
-    if [ ! -f "/usr/bin/sysbench" ] && [ ! -f "/usr/local/bin/sysbench" ]; then
-        echo -e "${Msg_Warning}Sysbench Module install Failure, trying compile modules ..."
-        Check_Sysbench_InstantBuild
-    fi
-    # 最终检测
-    if [ "$(command -v sysbench)" ] || [ -f "/usr/bin/sysbench" ] || [ -f "/usr/local/bin/sysbench" ]; then
-        _yellow "Install sysbench successfully!"
-    else
-        _red "SysBench Moudle install Failure! Try Restart Bench or Manually install it! (/usr/bin/sysbench)"
-        _blue "Will try to test with geekbench5 instead later on"
-        error_exit
-        test_cpu_type="gb5"
-    fi
-    sleep 3
-}
-
-Check_Sysbench_InstantBuild() {
-    # 检查是否支持编译安装
-    local supported_systems="centos|rhel|almalinux|opencloudos|ubuntu|debian|fedora|arch"
-    if [[ ! ${Var_OSRelease} =~ $supported_systems ]]; then
-        echo -e "${Msg_Warning}Unsupported operating system: ${Var_OSRelease}"
-        return
-    fi
-    # 使用包管理器对应关系
-    local os_type=${Var_OSRelease}
-    case "$os_type" in
-    "opencloudos") os_type="centos" ;;
-    "rhel") os_type="centos" ;;
-    "almalinux") os_type="centos" ;;
-    esac
-    echo -e "${Msg_Info}Release Detected: ${os_type}"
-    echo -e "${Msg_Info}Preparing compile environment..."
-    prepare_compile_env "${os_type}"
-    echo -e "${Msg_Info}Downloading Source code (Version 1.0.20)..."
-    mkdir -p "$LBENCH_SRC_DIR/src"
-    dfiles=(sysbench)
-    start_downloads "${dfiles[@]}" || return 1
-    mv "${TEMP_DIR}/sysbench-1.0.20" "$LBENCH_SRC_DIR/src/"
-    echo -e "${Msg_Info}Compiling Sysbench Module..."
-    cd "$LBENCH_SRC_DIR/src/sysbench-1.0.20" || return
-    ./autogen.sh && ./configure --without-mysql && make -j8 && make install
-    echo -e "${Msg_Info}Cleaning up..."
-    cd /tmp
-    rm -rf -- "$LBENCH_SRC_DIR"/src/sysbench*
-}
-
 cleanup_epel() {
     _yellow "Cleaning up EPEL repositories..."
     rm -f /etc/yum.repos.d/*epel*
@@ -3377,7 +3235,6 @@ pre_check() {
     check_lsof
     check_time_zone
     start_time=$(date +%s)
-    Check_SysBench
     global_startup_init_action
     cd $myvar >/dev/null 2>&1
     ! _exists "wget" && error_exit && _red "Error: wget command not found.\n" && exit 1
