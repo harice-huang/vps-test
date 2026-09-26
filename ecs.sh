@@ -847,49 +847,6 @@ check_cdn_file() {
     fi
 }
 
-check_time_zone() {
-    _yellow "adjusting the time"
-    if command -v ntpd >/dev/null 2>&1; then
-        if which systemctl >/dev/null 2>&1; then
-            systemctl stop chronyd
-            systemctl stop ntpd
-        else
-            service chronyd stop
-            service ntpd stop
-        fi
-        if lsof -i:123 | grep -q "ntpd"; then
-            echo "Port 123 is already in use. Skipping ntpd command."
-        else
-            # 最多对准时长进行60秒，避免对准时间这个过程耗时过长
-            if [ "$usage_timeout" = true ]; then
-                timeout 60s ntpd -gq
-            else
-                ntpd -gq
-            fi
-            if which systemctl >/dev/null 2>&1; then
-                systemctl start ntpd
-            else
-                service ntpd start
-            fi
-        fi
-        sleep 0.5
-        return
-    fi
-    if ! command -v chronyd >/dev/null 2>&1; then
-        ${PACKAGE_INSTALL[int]} chrony >/dev/null 2>&1
-    fi
-    if which systemctl >/dev/null 2>&1; then
-        systemctl stop chronyd
-        chronyd -q -t 30
-        systemctl start chronyd
-    else
-        service chronyd stop
-        chronyd -q -t 30
-        service chronyd start
-    fi
-    sleep 0.5
-}
-
 check_china() {
     _yellow "IP area being detected ......"
     if [[ -z "${CN}" ]]; then
@@ -3046,7 +3003,6 @@ pre_check() {
     check_wget
     systemInfo_get_os_release
     check_lsof
-    check_time_zone
     start_time=$(date +%s)
     global_startup_init_action
     cd $myvar >/dev/null 2>&1
