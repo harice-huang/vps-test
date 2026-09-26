@@ -479,21 +479,6 @@ check_lsof() {
     fi
 }
 
-check_haveged() {
-    [ "${Var_OSRelease}" = "freebsd" ] && return
-    _yellow "checking haveged"
-    if ! command -v haveged >/dev/null 2>&1; then
-        ${PACKAGE_INSTALL[int]} haveged >/dev/null 2>&1
-    fi
-    if which systemctl >/dev/null 2>&1; then
-        systemctl disable --now haveged
-        systemctl enable --now haveged
-    else
-        service haveged stop
-        service haveged start
-    fi
-}
-
 checkpip() {
     [ "${Var_OSRelease}" = "freebsd" ] && curl --fail --location --proto '=https' --proto-redir '=https' https://bootstrap.pypa.io/get-pip.py -o "$TEMP_DIR/get-pip.py" && chmod 700 "$TEMP_DIR/get-pip.py" && python3 "$TEMP_DIR/get-pip.py" && rm -f "$TEMP_DIR/get-pip.py" && return
     local pvr="$1"
@@ -3083,7 +3068,6 @@ pre_check() {
     else
         echo "请耐心等待后台任务执行完毕"
     fi
-    check_haveged
     check_free
     check_timeout
     check_lscpu
