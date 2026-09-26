@@ -1449,7 +1449,6 @@ function BenchAPI_Systeminfo_GetOSReleaseinfo() {
 # }
 # ===========================================================================
 
-# =============== sysbench组件检测 部分 ===============
 cleanup_epel() {
     _yellow "Cleaning up EPEL repositories..."
     rm -f /etc/yum.repos.d/*epel*
@@ -1510,88 +1509,6 @@ prepare_compile_env() {
 }
 
 # =============== CPU性能测试 部分 ===============
-Run_SysBench_CPU() {
-    # 调用方式: Run_SysBench_CPU "线程数" "测试时长(s)" "测试遍数" "说明"
-    # 变量初始化
-    maxtestcount="$3"
-    local count="1"
-    local TestScore="0"
-    local TotalScore="0"
-    # 运行测试
-    while [ $count -le $maxtestcount ]; do
-        echo -e "\r ${Font_Yellow}$4: ${Font_Suffix}\t\t$count/$maxtestcount \c"
-        sysbench_version=$(sysbench --version 2>&1 | awk '{print $2}')
-        local target_version="1.0.20"
-        if [ "${Var_OSRelease}" == "freebsd" ]; then
-            # freebsd系统下测不准待官方修复，故而设置为0
-            local TestResult="events per second: 0"
-        # elif [ "$sysbench_version" == "$target_version" ]; then
-        elif [ "$(printf '%s\n' "$sysbench_version" "$target_version" | sort -V | head -n 1)" == "$target_version" ]; then
-            # 版本号大于或等于1.0.20使用新命令检测否则使用旧命令检测
-            local TestResult="$(sysbench cpu --threads=$1 --cpu-max-prime=10000 --events=1000000 --time=$2 run 2>&1)"
-        else
-            local TestResult="$(sysbench --test=cpu --num-threads=$1 --cpu-max-prime=10000 --max-requests=1000000 --max-time=$2 run 2>&1)"
-        fi
-        local TestScore="$(echo ${TestResult} | grep -oE "events per second: [0-9]+" | grep -oE "[0-9]+")"
-        if [ -z "$TestScore" ]; then
-            TestScore=$(echo "${TestResult}" | grep -oE "total number of events:\s+[0-9]+" | awk '{print $NF}' | awk -v time="$(echo "${TestResult}" | grep -oE "total time:\s+[0-9.]+[a-z]*" | awk '{print $NF}')" '{printf "%.2f\n", $0 / time}')
-        fi
-        local TotalScore="$(echo "${TotalScore} ${TestScore}" | awk '{printf "%d",$1+$2}')"
-        let count=count+1
-        local TestResult=""
-        local TestScore="0"
-    done
-    local ResultScore="$(echo "${TotalScore} ${maxtestcount}" | awk '{printf "%d",$1/$2}')"
-    if [ "$1" = "1" ]; then
-        if [ "$ResultScore" -eq "0" ] || ([ "$1" -lt "2" ] && [ "$ResultScore" -gt "100000" ]); then
-            if [ "$en_status" = true ]; then
-                echo -e "\r ${Font_Yellow}$4: ${Font_Suffix}\t\t${Font_Red}sysbench test failed, please use this script option '-ctype gb5' to test${Font_Suffix}"
-            else
-                echo -e "\r ${Font_Yellow}$4: ${Font_Suffix}\t\t${Font_Red}sysbench测试失效，请使用本脚本选项 '-ctype gb5' 进行测试${Font_Suffix}"
-            fi
-        else
-            echo -e "\r ${Font_Yellow}$4: ${Font_Suffix}\t\t${Font_SkyBlue}${ResultScore}${Font_Suffix} ${Font_Yellow}Scores${Font_Suffix}"
-        fi
-    elif [ "$1" -ge "2" ]; then
-        if [ "$ResultScore" -eq "0" ] || ([ "$1" -lt "2" ] && [ "$ResultScore" -gt "100000" ]); then
-            if [ "$en_status" = true ]; then
-                echo -e "\r ${Font_Yellow}$4: ${Font_Suffix}\t\t${Font_Red}sysbench test failed, please use this script option '-ctype gb5' to test${Font_Suffix}"
-            else
-                echo -e "\r ${Font_Yellow}$4: ${Font_Suffix}\t\t${Font_Red}sysbench测试失效，请使用本脚本选项5中的gb4或gb5测试${Font_Suffix}"
-            fi
-        else
-            echo -e "\r ${Font_Yellow}$4: ${Font_Suffix}\t\t${Font_SkyBlue}${ResultScore}${Font_Suffix} ${Font_Yellow}Scores${Font_Suffix}"
-        fi
-    fi
-}
-
-Function_SysBench_CPU_Fast() {
-    cd $myvar >/dev/null 2>&1
-    if [ "$en_status" = true ]; then
-        echo -e " ${Font_Yellow}-> CPU test in progress (Fast Mode, 1-Pass @ 5sec)${Font_Suffix}"
-        Run_SysBench_CPU "1" "5" "1" "1 Thread(s) Test"
-        sleep 1
-        if [ -n "${Result_Systeminfo_CPUThreads}" ] && [ "${Result_Systeminfo_CPUThreads}" -ge "2" ] >/dev/null 2>&1; then
-            Run_SysBench_CPU "${Result_Systeminfo_CPUThreads}" "5" "1" "${Result_Systeminfo_CPUThreads} Thread(s) Test"
-        elif [ -n "${Result_Systeminfo_CPUCores}" ] && [ "${Result_Systeminfo_CPUCores}" -ge "2" ] >/dev/null 2>&1; then
-            Run_SysBench_CPU "${Result_Systeminfo_CPUCores}" "5" "1" "${Result_Systeminfo_CPUCores} Thread(s) Test"
-        elif [ -n "${cores}" ] && [ "${cores}" -ge "2" ] >/dev/null 2>&1; then
-            Run_SysBench_CPU "${cores}" "5" "1" "${cores} Thread(s) Test"
-        fi
-    else
-        echo -e " ${Font_Yellow}-> CPU 测试中 (Fast Mode, 1-Pass @ 5sec)${Font_Suffix}"
-        Run_SysBench_CPU "1" "5" "1" "1 线程测试(单核)得分"
-        sleep 1
-        if [ -n "${Result_Systeminfo_CPUThreads}" ] && [ "${Result_Systeminfo_CPUThreads}" -ge "2" ] >/dev/null 2>&1; then
-            Run_SysBench_CPU "${Result_Systeminfo_CPUThreads}" "5" "1" "${Result_Systeminfo_CPUThreads} 线程测试(多核)得分"
-        elif [ -n "${Result_Systeminfo_CPUCores}" ] && [ "${Result_Systeminfo_CPUCores}" -ge "2" ] >/dev/null 2>&1; then
-            Run_SysBench_CPU "${Result_Systeminfo_CPUCores}" "5" "1" "${Result_Systeminfo_CPUCores} 线程测试(多核)得分"
-        elif [ -n "${cores}" ] && [ "${cores}" -ge "2" ] >/dev/null 2>&1; then
-            Run_SysBench_CPU "${cores}" "5" "1" "${cores} 线程测试(多核)得分"
-        fi
-    fi
-}
-
 # =============== 网速测试及延迟测试 部分 ===============
 download_speedtest_file() {
     cd "$myvar" >/dev/null 2>&1
